@@ -96,30 +96,6 @@ data class SessionResponse(
     val lastSeenAt: String
 )
 
-@Serializable
-data class PaginatedSessionResponse(
-    val data: List<SessionResponse>,
-    val page: Int,
-    val size: Int,
-    val totalItems: Long,
-    val totalPages: Int
-)
-
-@Serializable
-data class SessionFilterOptionsResponse(
-    val appNames: List<String>,
-    val platforms: List<String>,
-    val languages: List<String>,
-    val appVersions: List<String>
-)
-
-@Serializable
-data class ActiveCountResponse(
-    val activeUsers: Long,
-    val days: Int,
-    val since: String
-)
-
 // ---------- Ortak ----------
 
 @Serializable

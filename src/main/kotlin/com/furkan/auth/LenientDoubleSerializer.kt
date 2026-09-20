@@ -30,6 +30,7 @@ internal object LenientDoubleSerializer : KSerializer<Double?> {
         return primitive.content.trim().takeIf { it.isNotEmpty() }?.toDoubleOrNull()
     }
 
+    @OptIn(kotlinx.serialization.ExperimentalSerializationApi::class)
     override fun serialize(encoder: Encoder, value: Double?) {
         if (value == null) encoder.encodeNull() else encoder.encodeDouble(value)
     }

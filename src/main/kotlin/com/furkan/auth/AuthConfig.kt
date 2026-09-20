@@ -17,12 +17,9 @@ const val AUTH_LIB = "auth-lib"
  * @param basePath        Route'larin monte edilecegi taban yol. Orn. "/auth".
  * @param tablePrefix     Tablo adlarinin onune eklenir: "prayapp_" -> prayapp_accounts, prayapp_sessions...
  * @param authName        Kaydedilen JWT provider'in adi. Kendi route'larini `authenticate(authName)` ile korursun.
- * @param adminAuthName   Oturum listesi / aktif kullanici gibi admin uclarini koruyacak, PROJENIN kendi
- *                        auth provider adi. null ise bu uclar ek koruma olmadan acilir.
  * @param accessTokenTtl  Access token omru.
  * @param refreshTokenTtl Refresh token omru.
  * @param minPasswordLength Kayitta istenen en kisa sifre.
- * @param activeWindowDays "Aktif kullanici" icin varsayilan gun penceresi.
  */
 data class AuthConfig(
     val database: Database,
@@ -30,15 +27,11 @@ data class AuthConfig(
     val basePath: String = "/auth",
     val tablePrefix: String = "",
     val authName: String = AUTH_LIB,
-    val adminAuthName: String? = null,
     val jwtIssuer: String = "auth-lib",
     val jwtAudience: String = "auth-lib-clients",
     val accessTokenTtl: Duration = 1.hours,
     val refreshTokenTtl: Duration = 30.days,
-    val minPasswordLength: Int = 8,
-    val activeWindowDays: Int = 14,
-    val defaultPageSize: Int = 25,
-    val maxPageSize: Int = 100
+    val minPasswordLength: Int = 8
 ) {
     val accounts: AccountTable by lazy { AccountTable("${tablePrefix}accounts") }
     val sessions: SessionTable by lazy { SessionTable("${tablePrefix}sessions", accounts) }
@@ -48,14 +41,11 @@ data class AuthConfig(
         require(jwtSecret.length >= 32) { "jwtSecret en az 32 karakter olmali" }
         require(basePath.startsWith("/")) { "basePath '/' ile baslamali: $basePath" }
         require(authName.isNotBlank()) { "authName bos olamaz" }
-        require(adminAuthName != authName) { "adminAuthName, authName ile ayni olamaz" }
         require(accessTokenTtl.isPositive() && refreshTokenTtl.isPositive()) { "token omurleri pozitif olmali" }
         require(minPasswordLength >= 6) { "minPasswordLength en az 6 olmali" }
-        require(activeWindowDays >= 1) { "activeWindowDays en az 1 olmali" }
-        require(defaultPageSize in 1..maxPageSize) { "defaultPageSize 1..maxPageSize araliginda olmali" }
     }
 
     /** data class toString'i secret'i loglara sizdirmasin. */
     override fun toString(): String =
-        "AuthConfig(basePath=$basePath, tablePrefix=$tablePrefix, authName=$authName, adminAuthName=$adminAuthName)"
+        "AuthConfig(basePath=$basePath, tablePrefix=$tablePrefix, authName=$authName)"
 }

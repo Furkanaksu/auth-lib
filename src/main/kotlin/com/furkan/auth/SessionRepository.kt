@@ -5,15 +5,10 @@ import kotlinx.serialization.json.JsonObject
 import org.jetbrains.exposed.dao.id.EntityID
 import org.jetbrains.exposed.sql.Column
 import org.jetbrains.exposed.sql.Database
-import org.jetbrains.exposed.sql.Op
 import org.jetbrains.exposed.sql.ResultRow
-import org.jetbrains.exposed.sql.SortOrder
-import org.jetbrains.exposed.sql.SqlExpressionBuilder
 import org.jetbrains.exposed.sql.and
 import org.jetbrains.exposed.sql.deleteWhere
 import org.jetbrains.exposed.sql.insert
-import org.jetbrains.exposed.sql.lowerCase
-import org.jetbrains.exposed.sql.or
 import org.jetbrains.exposed.sql.selectAll
 import org.jetbrains.exposed.sql.statements.UpdateBuilder
 import org.jetbrains.exposed.sql.transactions.transaction
@@ -30,17 +25,6 @@ internal data class SessionData(
     val latitude: Double?,
     val longitude: Double?,
     val metadata: JsonObject?
-)
-
-internal data class SessionQuery(
-    val q: String? = null,
-    val appName: String? = null,
-    val platform: String? = null,
-    val language: String? = null,
-    val appVersion: String? = null,
-    val since: LocalDateTime? = null,
-    /** true: sadece hesaba bagli, false: sadece anonim, null: hepsi */
-    val linked: Boolean? = null
 )
 
 internal class SessionRepository(
@@ -151,37 +135,6 @@ internal class SessionRepository(
             ?.toResponse()
     }
 
-    fun query(filter: SessionQuery, page: Int, size: Int): Pair<List<SessionResponse>, Long> =
-        transaction(database) {
-            val condition = buildCondition(filter)
-            val base = { if (condition != null) table.selectAll().where(condition) else table.selectAll() }
-
-            val total = base().count()
-            val items = base()
-                .orderBy(table.lastSeenAt, SortOrder.DESC)
-                .limit(size).offset(((page - 1).coerceAtLeast(0).toLong()) * size)
-                .map { it.toResponse() }
-            items to total
-        }
-
-    fun distinctFilterValues(): SessionFilterOptionsResponse = transaction(database) {
-        fun distinct(column: Column<String?>): List<String> =
-            table.select(column).withDistinct()
-                .mapNotNull { it[column]?.takeIf(String::isNotBlank) }
-                .sorted()
-
-        SessionFilterOptionsResponse(
-            appNames = distinct(table.appName),
-            platforms = distinct(table.platform),
-            languages = distinct(table.language),
-            appVersions = distinct(table.appVersion)
-        )
-    }
-
-    fun countActiveSince(since: LocalDateTime): Long = transaction(database) {
-        table.selectAll().where { table.lastSeenAt greaterEq since }.count()
-    }
-
     private fun findById(id: Int): SessionResponse? =
         table.selectAll().where { table.id eq id }.limit(1).firstOrNull()?.toResponse()
 
@@ -227,24 +180,4 @@ internal class SessionRepository(
         firstSeenAt = this[table.firstSeenAt].toString(),
         lastSeenAt = this[table.lastSeenAt].toString()
     )
-
-    private fun buildCondition(f: SessionQuery): (SqlExpressionBuilder.() -> Op<Boolean>)? {
-        val parts = mutableListOf<SqlExpressionBuilder.() -> Op<Boolean>>()
-        if (!f.q.isNullOrBlank()) {
-            val like = "%${f.q.trim().lowercase()}%"
-            parts += { (table.deviceId.lowerCase() like like) or (table.city.lowerCase() like like) }
-        }
-        f.appName?.takeIf(String::isNotBlank)?.let { v -> parts += { table.appName eq v } }
-        f.platform?.takeIf(String::isNotBlank)?.let { v -> parts += { table.platform eq v } }
-        f.language?.takeIf(String::isNotBlank)?.let { v -> parts += { table.language eq v } }
-        f.appVersion?.takeIf(String::isNotBlank)?.let { v -> parts += { table.appVersion eq v } }
-        f.since?.let { v -> parts += { table.lastSeenAt greaterEq v } }
-        when (f.linked) {
-            true -> parts += { table.accountId.isNotNull() }
-            false -> parts += { table.accountId.isNull() }
-            null -> Unit
-        }
-        if (parts.isEmpty()) return null
-        return { parts.map { it() }.reduce { acc, op -> acc and op } }
-    }
 }

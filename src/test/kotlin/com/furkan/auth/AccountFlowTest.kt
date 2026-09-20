@@ -101,23 +101,13 @@ class AccountFlowTest {
     }
 
     @Test
-    fun `cikis refresh token'i iptal eder`() = testApplication {
+    fun `bilinmeyen refresh token reddedilir`() = testApplication {
         setup(testConfig("a6"))
-        val tokens = register("zeynep@example.com")
-
-        assertEquals(
-            HttpStatusCode.NoContent,
-            postJson("/auth/logout", """{"refreshToken":"${tokens.refreshToken}"}""").status
-        )
         assertEquals(
             HttpStatusCode.Unauthorized,
-            postJson("/auth/refresh", """{"refreshToken":"${tokens.refreshToken}"}""").status
+            postJson("/auth/refresh", """{"refreshToken":"bilinmeyen"}""").status
         )
-        assertEquals(
-            HttpStatusCode.NoContent,
-            postJson("/auth/logout", """{"refreshToken":"bilinmeyen"}""").status,
-            "cikis idempotent"
-        )
+        assertEquals(HttpStatusCode.BadRequest, postJson("/auth/refresh", """{}""").status)
     }
 
     @Test

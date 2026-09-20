@@ -20,11 +20,10 @@ internal val testJson = Json { ignoreUnknownKeys = true }
 
 internal const val TEST_SECRET = "test-secret-en-az-otuz-iki-karakter-uzunlugunda"
 
-internal fun testConfig(dbName: String, adminAuthName: String? = null) = AuthConfig(
+internal fun testConfig(dbName: String) = AuthConfig(
     database = Database.connect("jdbc:h2:mem:$dbName;DB_CLOSE_DELAY=-1", driver = "org.h2.Driver"),
     jwtSecret = TEST_SECRET,
-    tablePrefix = "${dbName}_",
-    adminAuthName = adminAuthName
+    tablePrefix = "${dbName}_"
 ).also { it.migrate() }
 
 internal fun ApplicationTestBuilder.setup(config: AuthConfig, extraRoutes: Route.() -> Unit = {}) {

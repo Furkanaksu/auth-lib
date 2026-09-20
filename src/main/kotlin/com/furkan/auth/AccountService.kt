@@ -89,15 +89,6 @@ internal class AccountService(
         return AuthResult.Ok(issueTokens(account))
     }
 
-    /** Cikis: verilen refresh token'i iptal eder. Bilinmeyen token da sessizce kabul edilir. */
-    fun logout(refreshToken: String?): AuthResult<Unit> {
-        if (refreshToken.isNullOrBlank()) {
-            return AuthResult.Fail(HttpStatusCode.BadRequest, "refreshToken bos olamaz")
-        }
-        refreshTokens.revoke(tokens.hashRefreshToken(refreshToken))
-        return AuthResult.Ok(Unit)
-    }
-
     fun findAccount(id: Int): AccountResponse? = accounts.findById(id)
 
     private fun issueTokens(account: AccountResponse): TokenResponse {

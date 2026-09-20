@@ -1,6 +1,5 @@
 package com.furkan.auth
 
-import io.ktor.client.request.basicAuth
 import io.ktor.client.request.bearerAuth
 import io.ktor.client.request.get
 import io.ktor.http.HttpStatusCode
@@ -134,54 +133,19 @@ class SessionFlowTest {
     }
 
     @Test
-    fun `admin listesi filtreler ve aktif sayiyi dondurur`() = testApplication {
-        setup(testConfig("s8"))
-        postJson("/auth/session", """{"deviceId":"d1","appName":"prayapp","platform":"android","language":"tr"}""")
-        postJson("/auth/session", """{"deviceId":"d2","appName":"dizibook","platform":"ios","language":"en"}""")
-        val tokens = register("bagli@example.com")
-        postJson("/auth/session", """{"deviceId":"d3","appName":"prayapp"}""", tokens.accessToken)
-
-        val all = client.get("/auth/sessions").decode<PaginatedSessionResponse>()
-        assertEquals(3, all.totalItems)
-
-        val prayapp = client.get("/auth/sessions?appName=prayapp").decode<PaginatedSessionResponse>()
-        assertEquals(2, prayapp.totalItems)
-
-        val linked = client.get("/auth/sessions?linked=true").decode<PaginatedSessionResponse>()
-        assertEquals(1, linked.totalItems)
-        assertEquals("d3", linked.data.single().deviceId)
-
-        val anon = client.get("/auth/sessions?linked=false").decode<PaginatedSessionResponse>()
-        assertEquals(2, anon.totalItems)
-
-        val filters = client.get("/auth/sessions/filters").decode<SessionFilterOptionsResponse>()
-        assertEquals(listOf("dizibook", "prayapp"), filters.appNames)
-        assertEquals(listOf("android", "ios"), filters.platforms)
-
-        val active = client.get("/auth/sessions/active-count").decode<ActiveCountResponse>()
-        assertEquals(3, active.activeUsers)
-        assertEquals(14, active.days)
-    }
-
-    @Test
-    fun `adminAuthName verilirse admin uclari projenin kendi auth'uyla korunur`() = testApplication {
-        val config = testConfig("s9", adminAuthName = "admin")
+    fun `projenin kendi Authentication kurulumuyla birlikte calisir`() = testApplication {
+        val config = testConfig("s9")
         application {
             install(ContentNegotiation) { json() }
+            // Proje kendi provider'ini zaten kurmus olabilir; kutuphane ustune ekler.
             install(Authentication) {
-                basic("admin") {
-                    validate { if (it.name == "admin" && it.password == "admin-sifre") UserIdPrincipal(it.name) else null }
-                }
+                basic("proje-kendi") { validate { UserIdPrincipal(it.name) } }
             }
             routing { authRoutes(config) }
         }
 
-        assertEquals(HttpStatusCode.Unauthorized, client.get("/auth/sessions").status)
-        assertEquals(
-            HttpStatusCode.OK,
-            client.get("/auth/sessions") { basicAuth("admin", "admin-sifre") }.status
-        )
-        // Uygulama uclari admin korumasindan etkilenmez.
+        val tokens = register("birlikte@example.com")
+        assertEquals(HttpStatusCode.OK, client.get("/auth/me") { bearerAuth(tokens.accessToken) }.status)
         assertEquals(HttpStatusCode.OK, postJson("/auth/session", """{"deviceId":"x"}""").status)
     }
 

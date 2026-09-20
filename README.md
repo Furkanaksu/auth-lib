@@ -9,7 +9,7 @@ Her projede bağımlılık olarak eklenir, üç satırla çalışır.
 - **Hesap** — email + şifre ile kayıt/giriş, access + refresh token.
 - Giriş yapılmışsa oturum **hesaba** bağlanır; cihazın o ana kadarki anonim geçmişi hesaba devredilir.
 
-Admin girişi kütüphanede yok; admin uçlarını kendi auth provider'ınla koruyabilirsin (`adminAuthName`).
+Kütüphanede admin ile ilgili hiçbir şey yok; admin paneli projede kalır.
 
 Altyapı `furkan.api` ve `support-lib` ile aynıdır: JDK 21, Kotlin 2.2.21, Ktor 3.3.2, Exposed 0.61.0.
 
@@ -29,7 +29,7 @@ dependencyResolutionManagement {
 `build.gradle.kts`:
 
 ```kotlin
-implementation("com.github.Furkanaksu:auth-lib:1.0.0")
+implementation("com.github.Furkanaksu:auth-lib:1.1.0")
 ```
 
 ## Kullanım
@@ -70,11 +70,7 @@ Kendi korumalı route'larını `authRoutes`'tan **önce** tanımlıyorsan en ba�
 | POST | `/auth/register` | — | Hesap aç → token çifti |
 | POST | `/auth/login` | — | Giriş → token çifti |
 | POST | `/auth/refresh` | — | Refresh token'la yeni çift (eskisi iptal) |
-| POST | `/auth/logout` | — | Refresh token'ı iptal et |
 | GET | `/auth/me` | zorunlu | Hesap + hesaba bağlı oturum |
-| GET | `/auth/sessions` | admin | Filtreli liste — `q`, `appName`, `platform`, `language`, `appVersion`, `days`, `active`, `linked`, `page`, `size` |
-| GET | `/auth/sessions/filters` | admin | Dropdown değerleri |
-| GET | `/auth/sessions/active-count` | admin | Son `days` günde (varsayılan 14) aktif oturum sayısı |
 
 ## Oturum
 
@@ -118,7 +114,6 @@ Hesap başına tek oturum tutulur; kullanıcı başka cihazdan girerse `deviceId
 POST /auth/register   { "email": "a@b.com", "password": "en-az-8-karakter", "displayName": "Ali" }
 POST /auth/login      { "email": "a@b.com", "password": "..." }
 POST /auth/refresh    { "refreshToken": "..." }
-POST /auth/logout     { "refreshToken": "..." }
 ```
 
 Cevap:
@@ -135,6 +130,9 @@ Cevap:
 
 İstemci akışı: token'ı `Authorization: Bearer <accessToken>` header'ında gönder; 401 alınca
 `/auth/refresh` ile yenile; refresh de 401 dönerse kullanıcıyı giriş ekranına al.
+
+Çıkış istemcide yapılır: uygulama token'ları siler. Sunucu tarafında çıkış ucu yoktur; refresh token
+süresi (varsayılan 30 gün) dolana kadar geçerli kalır.
 
 ## Güvenlik
 
@@ -153,11 +151,9 @@ Cevap:
 | `basePath` | `/auth` | |
 | `tablePrefix` | `""` | Aynı DB'de birden fazla uygulama için |
 | `authName` | `auth-lib` | `authenticate(...)` ile kullanılan provider adı |
-| `adminAuthName` | `null` | Admin uçlarını koruyacak, projenin kendi provider adı |
 | `accessTokenTtl` | 1 saat | |
 | `refreshTokenTtl` | 30 gün | |
 | `minPasswordLength` | 8 | |
-| `activeWindowDays` | 14 | `active=true` ve active-count için |
 
 ## Tablolar
 
@@ -167,8 +163,8 @@ Hesap silinirse oturumu anonim kalır (`SET NULL`), refresh token'ları silinir 
 ## Yayınlama (JitPack)
 
 ```bash
-git tag 1.0.0
-git push origin 1.0.0
+git tag 1.1.0
+git push origin 1.1.0
 ```
 
 ## Geliştirme
