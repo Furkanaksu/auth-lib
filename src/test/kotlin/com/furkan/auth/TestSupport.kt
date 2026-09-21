@@ -10,7 +10,10 @@ import io.ktor.http.contentType
 import io.ktor.serialization.kotlinx.json.json
 import io.ktor.server.application.install
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.auth.authenticate
+import io.ktor.server.response.respondText
 import io.ktor.server.routing.Route
+import io.ktor.server.routing.get
 import io.ktor.server.routing.routing
 import io.ktor.server.testing.ApplicationTestBuilder
 import kotlinx.serialization.json.Json
@@ -26,11 +29,20 @@ internal fun testConfig(dbName: String) = AuthConfig(
     tablePrefix = "${dbName}_"
 ).also { it.migrate() }
 
+/** Token dogrulamasini sinamak icin her testte hazir duran korumali route. */
+internal const val PROTECTED_PATH = "/korumali"
+
 internal fun ApplicationTestBuilder.setup(config: AuthConfig, extraRoutes: Route.() -> Unit = {}) {
     application {
         install(ContentNegotiation) { json() }
         routing {
             authRoutes(config)
+            authenticate(config.authName) {
+                get(PROTECTED_PATH) {
+                    val account = call.currentAccount()!!
+                    call.respondText("${account.accountId}:${account.email}")
+                }
+            }
             extraRoutes()
         }
     }

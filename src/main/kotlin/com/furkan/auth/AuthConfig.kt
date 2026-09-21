@@ -15,7 +15,7 @@ const val AUTH_LIB = "auth-lib"
  * @param database        Projenin kendi Exposed [Database] objesi. Kutuphane asla connect() cagirmaz.
  * @param jwtSecret       Token imzalama anahtari. En az 32 karakter; ortam degiskeninden okunmali.
  * @param basePath        Route'larin monte edilecegi taban yol. Orn. "/auth".
- * @param tablePrefix     Tablo adlarinin onune eklenir: "prayapp_" -> prayapp_accounts, prayapp_sessions...
+ * @param tablePrefix     Tablo adlarinin onune eklenir: "prayapp_" -> prayapp_accounts, prayapp_refresh_tokens
  * @param authName        Kaydedilen JWT provider'in adi. Kendi route'larini `authenticate(authName)` ile korursun.
  * @param accessTokenTtl  Access token omru.
  * @param refreshTokenTtl Refresh token omru.
@@ -34,7 +34,6 @@ data class AuthConfig(
     val minPasswordLength: Int = 8
 ) {
     val accounts: AccountTable by lazy { AccountTable("${tablePrefix}accounts") }
-    val sessions: SessionTable by lazy { SessionTable("${tablePrefix}sessions", accounts) }
     val refreshTokens: RefreshTokenTable by lazy { RefreshTokenTable("${tablePrefix}refresh_tokens", accounts) }
 
     init {

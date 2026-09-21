@@ -19,7 +19,7 @@ import kotlin.test.assertTrue
 class AccountFlowTest {
 
     @Test
-    fun `kayit token doner ve me ucu hesabi gosterir`() = testApplication {
+    fun `kayit token doner ve korumali route calisir`() = testApplication {
         setup(testConfig("a1"))
 
         val response = postJson(
@@ -32,9 +32,10 @@ class AccountFlowTest {
         assertEquals("Bearer", tokens.tokenType)
         assertEquals(3600, tokens.expiresIn)
 
-        val me = client.get("/auth/me") { bearerAuth(tokens.accessToken) }
-        assertEquals(HttpStatusCode.OK, me.status)
-        assertEquals("Ali", me.decode<MeResponse>().account.displayName)
+        val protected = client.get(PROTECTED_PATH) { bearerAuth(tokens.accessToken) }
+        assertEquals(HttpStatusCode.OK, protected.status)
+        assertEquals("${tokens.account.id}:ali@example.com", protected.bodyAsText())
+        assertEquals("Ali", tokens.account.displayName)
     }
 
     @Test
@@ -111,11 +112,11 @@ class AccountFlowTest {
     }
 
     @Test
-    fun `me ucu tokensiz, bozuk ya da baska anahtarla imzali token'i reddeder`() = testApplication {
+    fun `korumali route tokensiz, bozuk ya da baska anahtarla imzali token'i reddeder`() = testApplication {
         setup(testConfig("a7"))
 
-        assertEquals(HttpStatusCode.Unauthorized, client.get("/auth/me").status)
-        assertEquals(HttpStatusCode.Unauthorized, client.get("/auth/me") { bearerAuth("bozuk.token.degeri") }.status)
+        assertEquals(HttpStatusCode.Unauthorized, client.get(PROTECTED_PATH).status)
+        assertEquals(HttpStatusCode.Unauthorized, client.get(PROTECTED_PATH) { bearerAuth("bozuk.token.degeri") }.status)
 
         val forged = JWT.create()
             .withIssuer("auth-lib")
@@ -125,7 +126,7 @@ class AccountFlowTest {
             .withClaim("typ", "access")
             .withExpiresAt(Date(System.currentTimeMillis() + 60_000))
             .sign(Algorithm.HMAC256("baska-bir-anahtar-en-az-otuz-iki-karakter"))
-        assertEquals(HttpStatusCode.Unauthorized, client.get("/auth/me") { bearerAuth(forged) }.status)
+        assertEquals(HttpStatusCode.Unauthorized, client.get(PROTECTED_PATH) { bearerAuth(forged) }.status)
     }
 
     @Test
@@ -140,7 +141,7 @@ class AccountFlowTest {
             .withClaim("typ", "access")
             .withExpiresAt(Date(System.currentTimeMillis() - 120_000))
             .sign(Algorithm.HMAC256(TEST_SECRET))
-        assertEquals(HttpStatusCode.Unauthorized, client.get("/auth/me") { bearerAuth(expired) }.status)
+        assertEquals(HttpStatusCode.Unauthorized, client.get(PROTECTED_PATH) { bearerAuth(expired) }.status)
     }
 
     @Test
@@ -158,6 +159,18 @@ class AccountFlowTest {
         val ok = client.get("/profil") { bearerAuth(tokens.accessToken) }
         assertEquals(HttpStatusCode.OK, ok.status)
         assertTrue(ok.bodyAsText().contains("proje@example.com"))
+    }
+
+    @Test
+    fun `hesap koddan okunabilir`() = testApplication {
+        val config = testConfig("a10")
+        setup(config)
+        val tokens = register("koddan@example.com")
+
+        val accounts = AuthAccounts(config)
+        assertEquals("koddan@example.com", accounts.find(tokens.account.id)?.email)
+        assertEquals(tokens.account.id, accounts.findByEmail("KODDAN@example.com")?.id)
+        assertEquals(null, accounts.find(9999))
     }
 
     @Test
