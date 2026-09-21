@@ -23,7 +23,8 @@ data class RefreshRequest(
 @Serializable
 data class AccountResponse(
     val id: Int,
-    val email: String,
+    /** Saglayici email vermediyse (Apple "email'imi gizle", Facebook izni yok) null olabilir. */
+    val email: String?,
     val displayName: String?,
     val createdAt: String,
     val lastLoginAt: String? = null

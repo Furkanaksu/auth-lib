@@ -23,13 +23,14 @@ internal class TokenService(private val config: AuthConfig) {
         .withClaim(CLAIM_TYPE, TYPE_ACCESS)
         .build()
 
-    fun createAccessToken(accountId: Int, email: String): String {
+    fun createAccessToken(accountId: Int, email: String?): String {
         val now = System.currentTimeMillis()
         return JWT.create()
             .withIssuer(config.jwtIssuer)
             .withAudience(config.jwtAudience)
             .withSubject(accountId.toString())
-            .withClaim(CLAIM_EMAIL, email)
+            // Emailsiz hesaplarda (sosyal giris) claim hic yazilmaz.
+            .apply { if (email != null) withClaim(CLAIM_EMAIL, email) }
             .withClaim(CLAIM_TYPE, TYPE_ACCESS)
             .withIssuedAt(Date(now))
             .withExpiresAt(Date(now + config.accessTokenTtl.inWholeMilliseconds))

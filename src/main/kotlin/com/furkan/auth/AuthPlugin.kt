@@ -12,7 +12,8 @@ import io.ktor.util.AttributeKey
 /** Gecerli access token'la gelen istegin sahibi. */
 data class AccountPrincipal(
     val accountId: Int,
-    val email: String
+    /** Sosyal giris ile acilmis bazi hesaplarda email olmayabilir. */
+    val email: String?
 )
 
 /** Giris yapmis hesap; token yoksa ya da optional bir route'taysan null. */
@@ -37,7 +38,7 @@ fun Application.installAuthLib(config: AuthConfig) {
             validate { credential ->
                 val id = credential.payload.subject?.toIntOrNull()
                 val email = credential.payload.getClaim(TokenService.CLAIM_EMAIL).asString()
-                if (id != null && email != null) AccountPrincipal(id, email) else null
+                if (id != null) AccountPrincipal(id, email) else null
             }
             challenge { _, _ ->
                 call.respond(

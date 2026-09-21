@@ -12,8 +12,10 @@ internal sealed interface AuthResult<out T> {
 internal class AccountService(
     private val config: AuthConfig,
     private val accounts: AccountRepository,
+    private val identities: AccountIdentityRepository,
     private val refreshTokens: RefreshTokenRepository,
-    private val tokens: TokenService
+    private val tokens: TokenService,
+    private val socialVerifier: SocialTokenVerifier
 ) {
 
     fun register(email: String?, password: String?, displayName: String?): AuthResult<TokenResponse> {
@@ -50,14 +52,78 @@ internal class AccountService(
         }
 
         val record = accounts.findByEmail(normalized)
-        // Hesap yoksa da ayni sure hash hesaplanir: email'in kayitli olup olmadigi zamanlamadan anlasilmasin.
+        // Hesap yoksa ya da sifresizse (sadece sosyal giris) de ayni sure hash hesaplanir:
+        // email'in kayitli olup olmadigi zamanlamadan anlasilmasin.
         val valid = PasswordHasher.verify(password, record?.passwordHash ?: dummyHash)
-        if (record == null || !valid) {
+        if (record == null || record.passwordHash == null || !valid) {
             return AuthResult.Fail(HttpStatusCode.Unauthorized, INVALID_CREDENTIALS)
         }
 
         accounts.touchLogin(record.id)
         return AuthResult.Ok(issueTokens(accounts.findById(record.id) ?: record.response))
+    }
+
+    /**
+     * Sosyal giris. Sirayla:
+     * 1. Saglayicinin token'i dogrulanir.
+     * 2. (provider, providerUserId) daha once baglandiysa o hesap kullanilir.
+     * 3. Degilse ve saglayici email'i DOGRULADIYSA ayni email'li hesap varsa ona baglanir.
+     * 4. Hicbiri degilse yeni hesap acilir (sifresiz).
+     */
+    suspend fun socialLogin(
+        provider: SocialProvider,
+        token: String?,
+        displayNameFromClient: String?
+    ): AuthResult<TokenResponse> {
+        if (!config.social.isEnabled(provider)) {
+            return AuthResult.Fail(HttpStatusCode.NotImplemented, "$provider girisi bu sunucuda tanimli degil")
+        }
+        if (token.isNullOrBlank()) {
+            return AuthResult.Fail(HttpStatusCode.BadRequest, "token bos olamaz")
+        }
+
+        val identity = try {
+            socialVerifier.verify(provider, token)
+        } catch (e: Exception) {
+            null
+        } ?: return AuthResult.Fail(HttpStatusCode.Unauthorized, INVALID_SOCIAL_TOKEN)
+
+        val email = identity.email?.trim()?.lowercase()?.takeIf { it.isNotBlank() && EMAIL.matches(it) }
+        val displayName = (identity.displayName ?: displayNameFromClient)?.trim()?.take(100)?.ifBlank { null }
+
+        val linkedAccountId = identities.findAccountId(provider, identity.providerUserId)
+        if (linkedAccountId != null) {
+            identities.updateEmail(provider, identity.providerUserId, email)
+            accounts.fillDisplayNameIfMissing(linkedAccountId, displayName)
+            accounts.touchLogin(linkedAccountId)
+            val account = accounts.findById(linkedAccountId)
+                ?: return AuthResult.Fail(HttpStatusCode.Unauthorized, INVALID_SOCIAL_TOKEN)
+            return AuthResult.Ok(issueTokens(account))
+        }
+
+        // Dogrulanmamis email ile hesap birlestirmek, o email'e sahipmis gibi davranan birine
+        // hesabi acmak demektir; bu yuzden sadece dogrulanmis email'de birlestirilir.
+        val existing = if (email != null && identity.emailVerified && config.social.linkByVerifiedEmail) {
+            accounts.findByEmail(email)
+        } else {
+            null
+        }
+
+        val accountId = if (existing != null) {
+            existing.id
+        } else {
+            // Email baska bir hesapta kayitliysa bu hesaba email yazilmaz; kimlik satirinda tutulur.
+            val emailForAccount = email?.takeIf { !accounts.existsByEmail(it) }
+            accounts.create(emailForAccount, null, displayName).id
+        }
+
+        identities.link(accountId, identity.copy(email = email))
+        accounts.fillDisplayNameIfMissing(accountId, displayName)
+        accounts.touchLogin(accountId)
+
+        val account = accounts.findById(accountId)
+            ?: return AuthResult.Fail(HttpStatusCode.Unauthorized, INVALID_SOCIAL_TOKEN)
+        return AuthResult.Ok(issueTokens(account))
     }
 
     /**
@@ -108,6 +174,7 @@ internal class AccountService(
         const val MAX_PASSWORD = 128
         const val INVALID_CREDENTIALS = "Gecersiz email veya sifre"
         const val INVALID_REFRESH = "Gecersiz ya da suresi dolmus refresh token"
+        const val INVALID_SOCIAL_TOKEN = "Saglayici token'i dogrulanamadi"
         val EMAIL = Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
 
         /** Hesap bulunamadiginda karsilastirma icin kullanilan sabit hash. */

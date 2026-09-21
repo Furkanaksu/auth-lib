@@ -20,6 +20,7 @@ const val AUTH_LIB = "auth-lib"
  * @param accessTokenTtl  Access token omru.
  * @param refreshTokenTtl Refresh token omru.
  * @param minPasswordLength Kayitta istenen en kisa sifre.
+ * @param social          Sosyal giris ayarlari. Bos birakilirsa sosyal giris ucu kapalidir.
  */
 data class AuthConfig(
     val database: Database,
@@ -31,9 +32,13 @@ data class AuthConfig(
     val jwtAudience: String = "auth-lib-clients",
     val accessTokenTtl: Duration = 1.hours,
     val refreshTokenTtl: Duration = 30.days,
-    val minPasswordLength: Int = 8
+    val minPasswordLength: Int = 8,
+    val social: SocialConfig = SocialConfig()
 ) {
     val accounts: AccountTable by lazy { AccountTable("${tablePrefix}accounts") }
+    val identities: AccountIdentityTable by lazy {
+        AccountIdentityTable("${tablePrefix}account_identities", accounts)
+    }
     val refreshTokens: RefreshTokenTable by lazy { RefreshTokenTable("${tablePrefix}refresh_tokens", accounts) }
 
     init {
@@ -46,5 +51,6 @@ data class AuthConfig(
 
     /** data class toString'i secret'i loglara sizdirmasin. */
     override fun toString(): String =
-        "AuthConfig(basePath=$basePath, tablePrefix=$tablePrefix, authName=$authName)"
+        "AuthConfig(basePath=$basePath, tablePrefix=$tablePrefix, authName=$authName, " +
+            "socialProviders=${social.enabledProviders})"
 }

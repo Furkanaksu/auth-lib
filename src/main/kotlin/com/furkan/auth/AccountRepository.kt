@@ -11,8 +11,9 @@ import java.time.LocalDateTime
 /** Sifre hash'i dahil ic kayit; disari asla bu haliyle cikmaz. */
 internal data class AccountRecord(
     val id: Int,
-    val email: String,
-    val passwordHash: String,
+    val email: String?,
+    /** Sadece sosyal giris ile acilmis hesaplarda null. */
+    val passwordHash: String?,
     val response: AccountResponse
 )
 
@@ -33,27 +34,41 @@ internal class AccountRepository(
         table.selectAll().where { table.email eq email }.limit(1).any()
     }
 
-    fun create(email: String, passwordHash: String, displayName: String?): AccountResponse = transaction(database) {
-        val now = LocalDateTime.now()
-        val id = table.insert {
-            it[this.email] = email
-            it[this.passwordHash] = passwordHash
-            it[this.displayName] = displayName
-            it[this.createdAt] = now
-            it[this.lastLoginAt] = now
-        }[table.id].value
+    /**
+     * Hesap acar. [passwordHash] null ise hesap sadece sosyal giris ile kullanilabilir,
+     * [email] null ise saglayici email vermemistir.
+     */
+    fun create(email: String?, passwordHash: String?, displayName: String?): AccountResponse =
+        transaction(database) {
+            val now = LocalDateTime.now()
+            val id = table.insert {
+                it[this.email] = email
+                it[this.passwordHash] = passwordHash
+                it[this.displayName] = displayName
+                it[this.createdAt] = now
+                it[this.lastLoginAt] = now
+            }[table.id].value
 
-        AccountResponse(
-            id = id,
-            email = email,
-            displayName = displayName,
-            createdAt = now.toString(),
-            lastLoginAt = now.toString()
-        )
-    }
+            AccountResponse(
+                id = id,
+                email = email,
+                displayName = displayName,
+                createdAt = now.toString(),
+                lastLoginAt = now.toString()
+            )
+        }
 
     fun touchLogin(id: Int): Unit = transaction(database) {
         table.update({ table.id eq id }) { it[this.lastLoginAt] = LocalDateTime.now() }
+    }
+
+    /** Saglayicidan gelen ad, hesapta bos ise doldurulur; var olan ad ezilmez. */
+    fun fillDisplayNameIfMissing(id: Int, displayName: String?): Unit = transaction(database) {
+        if (displayName.isNullOrBlank()) return@transaction
+        val current = table.selectAll().where { table.id eq id }.limit(1).firstOrNull()
+        if (current != null && current[table.displayName].isNullOrBlank()) {
+            table.update({ table.id eq id }) { it[this.displayName] = displayName.take(100) }
+        }
     }
 
     private fun ResultRow.toRecord() = AccountRecord(

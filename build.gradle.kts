@@ -6,7 +6,7 @@ plugins {
 }
 
 group = "com.furkan"
-version = "2.0.0"
+version = "3.0.0"
 
 kotlin {
     jvmToolchain(21)
@@ -26,6 +26,12 @@ dependencies {
     api(libs.exposed.jdbc)
     api(libs.exposed.java.time)
     api(libs.ktor.serialization.kotlinx.json)
+
+    // Sosyal giris: saglayicinin token'ini dogrulamak icin
+    implementation(libs.ktor.client.core)
+    implementation(libs.ktor.client.cio)
+    implementation(libs.ktor.client.content.negotiation)
+    implementation(libs.jwks.rsa)
 
     testImplementation(libs.ktor.server.test.host)
     testImplementation(libs.ktor.server.content.negotiation)

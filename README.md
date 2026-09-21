@@ -3,7 +3,8 @@
 [![JitPack](https://jitpack.io/v/Furkanaksu/auth-lib.svg)](https://jitpack.io/#Furkanaksu/auth-lib)
 
 Ktor + Exposed tabanlı, **yeniden kullanılabilir hesap ve token kütüphanesi**.
-Kapsamı bilerek dar: kayıt, giriş, token yenileme ve token doğrulama. Başka hiçbir şey yok.
+Kapsamı bilerek dar: kayıt, giriş (email/şifre ve Google / Apple / Facebook), token yenileme
+ve token doğrulama. Başka hiçbir şey yok.
 
 - Kullanıcının kendine dair bilgileri (oturum, cihaz, profil) → [user-me-lib](https://github.com/Furkanaksu/user-me-lib)
 - Admin girişi ve admin panel uçları → projede kalır
@@ -26,7 +27,7 @@ dependencyResolutionManagement {
 `build.gradle.kts`:
 
 ```kotlin
-implementation("com.github.Furkanaksu:auth-lib:2.0.0")
+implementation("com.github.Furkanaksu:auth-lib:3.0.0")
 ```
 
 ## Kullanım
@@ -66,6 +67,7 @@ Kendi korumalı route'larını `authRoutes`'tan **önce** tanımlıyorsan en ba�
 | POST | `/auth/register` | Hesap aç → token çifti |
 | POST | `/auth/login` | Giriş → token çifti |
 | POST | `/auth/refresh` | Refresh token'la yeni çift (eskisi iptal) |
+| POST | `/auth/social/{provider}` | `google` / `apple` / `facebook` ile giriş |
 
 ```json
 POST /auth/register   { "email": "a@b.com", "password": "en-az-8-karakter", "displayName": "Ali" }
@@ -91,6 +93,58 @@ Cevap:
 Çıkış istemcide yapılır: uygulama token'ları siler. Sunucu tarafında çıkış ucu yoktur;
 refresh token süresi (varsayılan 30 gün) dolana kadar geçerli kalır.
 
+## Sosyal giriş
+
+Uygulama sağlayıcının SDK'sıyla token'ı alır, bize gönderir; biz doğrulayıp kendi token'ımızı döneriz.
+
+```kotlin
+val auth = AuthConfig(
+    database = db,
+    jwtSecret = System.getenv("AUTH_JWT_SECRET"),
+    social = SocialConfig(
+        googleClientIds = setOf(androidClientId, iosClientId, webClientId),
+        appleAudiences = setOf("com.furkan.prayapp"),
+        facebookAppId = System.getenv("FB_APP_ID"),
+        facebookAppSecret = System.getenv("FB_APP_SECRET")
+    )
+)
+```
+
+Tanımlanmayan sağlayıcı kapalıdır; istek gelirse `501` döner.
+
+```json
+POST /auth/social/google   { "token": "<ID token>" }
+POST /auth/social/apple    { "token": "<ID token>", "displayName": "Ali" }
+POST /auth/social/facebook { "token": "<access token>" }
+```
+
+Cevap `login` ile aynıdır: access + refresh token ve hesap.
+
+**Doğrulama:** Google ve Apple ID token'ının imzası sağlayıcının JWKS'i ile kontrol edilir, `iss`
+ve `aud` doğrulanır (`aud` senin verdiğin client id listesinde olmalı). Facebook access token'ı
+Graph `debug_token` ucuna sorulur ve uygulamanın kendi token'ı olduğu doğrulanır.
+
+**Hesap eşleştirme sırası:**
+
+1. `(sağlayıcı, sağlayıcı kullanıcı id)` daha önce bağlandıysa o hesap kullanılır — sağlayıcıdaki
+   email değişse bile aynı hesaba düşer.
+2. Değilse ve sağlayıcı email'i **doğruladıysa**, aynı email'li hesap varsa ona bağlanır
+   (`linkByVerifiedEmail`, varsayılan açık).
+3. Hiçbiri değilse yeni hesap açılır (şifresiz).
+
+Doğrulanmamış email ile asla birleştirme yapılmaz: o email'e sahipmiş gibi davranan biri mevcut
+hesabı ele geçirebilirdi. Bu durumda yeni hesap açılır ve email yalnızca kimlik satırında tutulur.
+
+**Sağlayıcıya özel notlar:**
+
+- **Apple** kullanıcının adını sadece ilk yetkilendirmede gönderir ve token'da hiç göndermez;
+  istemci o an yakalayıp `displayName` alanında iletmeli. "Email'imi gizle" seçilirse email
+  `@privaterelay.appleid.com` olur ya da hiç gelmez.
+- **Facebook** email için izin ister; vermezse email null gelir.
+- **Google** için Android, iOS ve web ayrı client id kullanır; hepsi `googleClientIds` içinde olmalı.
+
+Sosyal girişle açılmış hesabın şifresi yoktur; `POST /auth/login` denemesi `401` döner.
+
 ## Kod üzerinden kullanım
 
 Token'dan gelen id ile hesabı okumak için:
@@ -111,7 +165,7 @@ val account = call.currentAccount()?.let { accounts.find(it.accountId) }
 - `AuthConfig.toString()` secret'ı yazdırmaz.
 
 Kütüphanede giriş denemesi sınırı **yok**; kaba kuvvet koruması projenin rate limit'ine kalıyor.
-Email doğrulama, şifre sıfırlama, şifre değiştirme, hesap silme ve sosyal giriş de yok.
+Email doğrulama, şifre sıfırlama, şifre değiştirme ve hesap silme de yok.
 
 ## Ayarlar
 
@@ -125,13 +179,26 @@ Email doğrulama, şifre sıfırlama, şifre değiştirme, hesap silme ve sosyal
 | `accessTokenTtl` | 1 saat | |
 | `refreshTokenTtl` | 30 gün | |
 | `minPasswordLength` | 8 | |
+| `social` | kapalı | `SocialConfig`: client id'ler, `linkByVerifiedEmail`, test için `verifier` |
 
 ## Tablolar
 
-`migrate()` iki tablo oluşturur: `<prefix>accounts` ve `<prefix>refresh_tokens`.
-Hesap silinirse refresh token'ları da silinir (`CASCADE`).
+`migrate()` üç tablo oluşturur: `<prefix>accounts`, `<prefix>account_identities` ve
+`<prefix>refresh_tokens`. Hesap silinirse kimlikleri ve refresh token'ları da silinir (`CASCADE`).
+
+`accounts.email` ve `accounts.password_hash` **null olabilir**: sosyal girişte sağlayıcı email
+vermeyebilir, sosyal hesabın şifresi yoktur. 2.x'ten gelen bir veritabanında bu kolonlar NOT NULL
+tanımlıdır; Exposed kısıtı kendiliğinden gevşetemezse tek seferlik:
+
+```sql
+ALTER TABLE <prefix>accounts ALTER COLUMN email DROP NOT NULL;
+ALTER TABLE <prefix>accounts ALTER COLUMN password_hash DROP NOT NULL;
+```
 
 ## Sürüm notu
+
+`3.0.0` sosyal girişi ekledi. Kırıcı değişiklik: `AccountResponse.email` ve `AccountPrincipal.email`
+artık null olabilir (sağlayıcı email vermeyebilir). Şema için yukarıdaki nullable notuna bak.
 
 `2.0.0` ile oturum/cihaz tarafı tamamen çıkarıldı (`POST /session`, `GET /me`, `AuthSessions`).
 O işler artık [user-me-lib](https://github.com/Furkanaksu/user-me-lib)'de. `1.x` kullanıyorsan
@@ -141,8 +208,8 @@ veri taşımaya gerek yoktur.
 ## Yayınlama (JitPack)
 
 ```bash
-git tag 2.0.0
-git push origin 2.0.0
+git tag 3.0.0
+git push origin 3.0.0
 ```
 
 ## Geliştirme

@@ -19,9 +19,10 @@ import io.ktor.server.routing.route
  * ```
  *
  * Uc noktalar (basePath'e gore):
- * - `POST {basePath}/register`  email + sifre ile hesap ac
- * - `POST {basePath}/login`     giris
- * - `POST {basePath}/refresh`   token yenile (rotation)
+ * - `POST {basePath}/register`           email + sifre ile hesap ac
+ * - `POST {basePath}/login`              giris
+ * - `POST {basePath}/refresh`            token yenile (rotation)
+ * - `POST {basePath}/social/{provider}`  Google / Apple / Facebook ile giris
  *
  * Cikis istemcide yapilir: token'lar silinir.
  * Kullaniciya ait oturum/profil bilgisi bu kutuphanenin isi degildir (bkz. user-me-lib).
@@ -33,8 +34,10 @@ fun Route.authRoutes(config: AuthConfig) {
         AccountService(
             config = config,
             accounts = AccountRepository(config.database, config.accounts),
+            identities = AccountIdentityRepository(config.database, config.identities, config.accounts),
             refreshTokens = RefreshTokenRepository(config.database, config.refreshTokens, config.accounts),
-            tokens = TokenService(config)
+            tokens = TokenService(config),
+            socialVerifier = config.social.verifier ?: DefaultSocialTokenVerifier(config.social)
         )
     )
 
@@ -42,6 +45,7 @@ fun Route.authRoutes(config: AuthConfig) {
         post("/register") { handlers.register(call) }
         post("/login") { handlers.login(call) }
         post("/refresh") { handlers.refresh(call) }
+        post("/social/{provider}") { handlers.socialLogin(call) }
     }
 }
 
@@ -63,6 +67,23 @@ internal class AuthHandlers(private val accounts: AccountService) {
     suspend fun refresh(call: ApplicationCall) {
         val request = call.receiveOrNull<RefreshRequest>() ?: return
         call.respondResult(accounts.refresh(request.refreshToken), HttpStatusCode.OK)
+    }
+
+    suspend fun socialLogin(call: ApplicationCall) {
+        val provider = SocialProvider.fromOrNull(call.parameters["provider"])
+        if (provider == null) {
+            call.respond(
+                HttpStatusCode.BadRequest,
+                AuthErrorResponse(error = "Gecersiz saglayici. Gecerli degerler: GOOGLE, APPLE, FACEBOOK")
+            )
+            return
+        }
+
+        val request = call.receiveOrNull<SocialLoginRequest>() ?: return
+        call.respondResult(
+            accounts.socialLogin(provider, request.token, request.displayName),
+            HttpStatusCode.OK
+        )
     }
 
     private suspend inline fun <reified T : Any> ApplicationCall.receiveOrNull(): T? = try {
