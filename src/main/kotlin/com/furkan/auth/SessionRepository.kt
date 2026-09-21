@@ -127,6 +127,14 @@ internal class SessionRepository(
             findById(id)!!
         }
 
+    fun findByDevice(deviceId: String): SessionResponse? = transaction(database) {
+        table.selectAll()
+            .where { (table.deviceId eq deviceId) and table.accountId.isNull() }
+            .limit(1)
+            .firstOrNull()
+            ?.toResponse()
+    }
+
     fun findByAccount(accountId: Int): SessionResponse? = transaction(database) {
         table.selectAll()
             .where { table.accountId eq EntityID(accountId, accounts) }

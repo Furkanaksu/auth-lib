@@ -29,7 +29,7 @@ dependencyResolutionManagement {
 `build.gradle.kts`:
 
 ```kotlin
-implementation("com.github.Furkanaksu:auth-lib:1.1.0")
+implementation("com.github.Furkanaksu:auth-lib:1.2.0")
 ```
 
 ## Kullanım
@@ -71,6 +71,21 @@ Kendi korumalı route'larını `authRoutes`'tan **önce** tanımlıyorsan en ba�
 | POST | `/auth/login` | — | Giriş → token çifti |
 | POST | `/auth/refresh` | — | Refresh token'la yeni çift (eskisi iptal) |
 | GET | `/auth/me` | zorunlu | Hesap + hesaba bağlı oturum |
+
+## Kod uzerinden kullanim (kendi uclarini korumak)
+
+Mevcut uclarini ve cevap seklini degistirmek istemiyorsan, HTTP ucu yerine oturum mantigini
+dogrudan cagirabilirsin:
+
+```kotlin
+val sessions = AuthSessions(auth)
+val session = sessions.upsert(SessionRequest(deviceId = deviceId, platform = platform))
+// ...sonra kendi cevap modeline cevir
+```
+
+`upsert` hesaba devretmeyi, `metadata` birlestirmeyi ve acilis sayacini halleder. Okuma tarafinda
+`sessions.findByDevice(...)` / `findByAccount(...)` kullanabilir ya da dogrudan `auth.sessions`
+tablosu uzerinde kendi Exposed sorgularini yazabilirsin.
 
 ## Oturum
 
@@ -163,8 +178,8 @@ Hesap silinirse oturumu anonim kalır (`SET NULL`), refresh token'ları silinir 
 ## Yayınlama (JitPack)
 
 ```bash
-git tag 1.1.0
-git push origin 1.1.0
+git tag 1.2.0
+git push origin 1.2.0
 ```
 
 ## Geliştirme
