@@ -64,6 +64,46 @@ internal class AccountService(
     }
 
     /**
+     * Cihaz girisi: kullanici adi/sifre olmadan hesap acar ya da var olana giris yapar.
+     *
+     * - Cihaz daha once kaydedilmisse ayni hesap kullanilir.
+     * - Kayitta sir verildiyse sonraki girislerde ayni sir istenir; yanlissa 401.
+     * - Yoksa emailsiz, sifresiz yeni bir hesap acilir.
+     */
+    fun deviceLogin(deviceId: String?, deviceSecret: String?): AuthResult<TokenResponse> {
+        val id = deviceId?.trim()
+        if (id.isNullOrBlank()) {
+            return AuthResult.Fail(HttpStatusCode.BadRequest, "deviceId bos olamaz")
+        }
+        if (id.length > 255) {
+            return AuthResult.Fail(HttpStatusCode.BadRequest, "deviceId en fazla 255 karakter olabilir")
+        }
+
+        val existing = identities.findDevice(id)
+        val accountId = if (existing != null) {
+            // Kayitta sir varsa artik zorunludur; sabit zamanli karsilastirma.
+            if (existing.secretHash != null) {
+                val valid = deviceSecret != null && PasswordHasher.verify(deviceSecret, existing.secretHash)
+                if (!valid) return AuthResult.Fail(HttpStatusCode.Unauthorized, INVALID_DEVICE)
+            }
+            existing.accountId
+        } else {
+            val account = accounts.create(email = null, passwordHash = null, displayName = null)
+            identities.linkDevice(
+                accountId = account.id,
+                deviceId = id,
+                secretHash = deviceSecret?.takeIf { it.isNotBlank() }?.let { PasswordHasher.hash(it) }
+            )
+            account.id
+        }
+
+        accounts.touchLogin(accountId)
+        val account = accounts.findById(accountId)
+            ?: return AuthResult.Fail(HttpStatusCode.Unauthorized, INVALID_DEVICE)
+        return AuthResult.Ok(issueTokens(account))
+    }
+
+    /**
      * Sosyal giris. Sirayla:
      * 1. Saglayicinin token'i dogrulanir.
      * 2. (provider, providerUserId) daha once baglandiysa o hesap kullanilir.
@@ -175,6 +215,7 @@ internal class AccountService(
         const val INVALID_CREDENTIALS = "Gecersiz email veya sifre"
         const val INVALID_REFRESH = "Gecersiz ya da suresi dolmus refresh token"
         const val INVALID_SOCIAL_TOKEN = "Saglayici token'i dogrulanamadi"
+        const val INVALID_DEVICE = "Cihaz dogrulanamadi"
         val EMAIL = Regex("^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$")
 
         /** Hesap bulunamadiginda karsilastirma icin kullanilan sabit hash. */

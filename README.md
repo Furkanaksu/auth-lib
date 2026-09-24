@@ -27,7 +27,7 @@ dependencyResolutionManagement {
 `build.gradle.kts`:
 
 ```kotlin
-implementation("com.github.Furkanaksu:auth-lib:3.0.0")
+implementation("com.github.Furkanaksu:auth-lib:3.1.0")
 ```
 
 ## Kullanım
@@ -68,12 +68,43 @@ Kendi korumalı route'larını `authRoutes`'tan **önce** tanımlıyorsan en ba�
 | POST | `/auth/login` | Giriş → token çifti |
 | POST | `/auth/refresh` | Refresh token'la yeni çift (eskisi iptal) |
 | POST | `/auth/social/{provider}` | `google` / `apple` / `facebook` ile giriş |
+| POST | `/auth/device` | Kullanıcı adı/şifre olmadan, cihaz kimliğiyle giriş |
 
 ```json
 POST /auth/register   { "email": "a@b.com", "password": "en-az-8-karakter", "displayName": "Ali" }
 POST /auth/login      { "email": "a@b.com", "password": "..." }
 POST /auth/refresh    { "refreshToken": "..." }
+POST /auth/device     { "deviceId": "a1b2c3", "profile": { "appVersion": "2.3.0", "language": "tr" } }
 ```
+
+### Cihaz girişi
+
+Uygulama, kullanıcı hiç kayıt olmadan da bir hesaba sahip olsun istiyorsan: ilk açılışta
+`POST /auth/device` çağrılır, e-postasız ve şifresiz bir hesap açılır, cihaz kimliği
+`account_identities` tablosuna `DEVICE` sağlayıcısıyla yazılır. Aynı `deviceId` her zaman
+aynı hesaba düşer. Sonraki açılışlarda bu uç **çağrılmaz**: elde token varsa doğrudan
+kullanılır, süresi dolmuşsa `/auth/refresh` ile yenilenir.
+
+İstersen `deviceSecret` gönder: ilk kayıtta saklanır (hash'lenerek) ve sonraki girişlerde
+zorunlu olur, yanlışsa 401. Göndermezsen cihaz kimliği tek başına yeterlidir.
+
+`profile` serbest bir JSON nesnesidir; kütüphane içeriğine karışmaz, `onLogin` geri
+çağrısıyla olduğu gibi projeye iletir:
+
+```kotlin
+AuthConfig(
+    database = db,
+    jwtSecret = secret,
+    onLogin = { olay ->
+        if (olay.method == LoginMethod.DEVICE && olay.deviceId != null) {
+            // orn. user-me-lib'e oturum yaz — bagimlilik kutuphanede degil, projede
+        }
+    }
+)
+```
+
+`LoginEvent` her giriş yolunda tetiklenir: `method` alanı `DEVICE`, `PASSWORD`, `SOCIAL`
+ya da `REGISTER` olur.
 
 Cevap:
 
@@ -197,6 +228,10 @@ ALTER TABLE <prefix>accounts ALTER COLUMN password_hash DROP NOT NULL;
 
 ## Sürüm notu
 
+`3.1.0` cihaz girişini (`POST /auth/device`) ve `onLogin` geri çağrısını ekledi. Kırıcı
+değişiklik yok; `account_identities` tablosuna nullable bir `secret_hash` kolonu eklenir,
+şema kendiliğinden güncellenir.
+
 `3.0.0` sosyal girişi ekledi. Kırıcı değişiklik: `AccountResponse.email` ve `AccountPrincipal.email`
 artık null olabilir (sağlayıcı email vermeyebilir). Şema için yukarıdaki nullable notuna bak.
 
@@ -208,8 +243,8 @@ veri taşımaya gerek yoktur.
 ## Yayınlama (JitPack)
 
 ```bash
-git tag 3.0.0
-git push origin 3.0.0
+git tag 3.1.0
+git push origin 3.1.0
 ```
 
 ## Geliştirme

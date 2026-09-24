@@ -21,6 +21,7 @@ const val AUTH_LIB = "auth-lib"
  * @param refreshTokenTtl Refresh token omru.
  * @param minPasswordLength Kayitta istenen en kisa sifre.
  * @param social          Sosyal giris ayarlari. Bos birakilirsa sosyal giris ucu kapalidir.
+ * @param onLogin         Giris sonrasi calisan geri cagri ([LoginEvent]).
  */
 data class AuthConfig(
     val database: Database,
@@ -33,7 +34,13 @@ data class AuthConfig(
     val accessTokenTtl: Duration = 1.hours,
     val refreshTokenTtl: Duration = 30.days,
     val minPasswordLength: Int = 8,
-    val social: SocialConfig = SocialConfig()
+    val social: SocialConfig = SocialConfig(),
+    /**
+     * Her basarili giristen sonra cagrilir. Kutuphane profil alanlarini bilmez; proje bunu
+     * kendi kullanici tablosuna yazmak icin kullanir (orn. user-me-lib).
+     * Varsayilan: hicbir sey yapma.
+     */
+    val onLogin: (LoginEvent) -> Unit = { }
 ) {
     val accounts: AccountTable by lazy { AccountTable("${tablePrefix}accounts") }
     val identities: AccountIdentityTable by lazy {

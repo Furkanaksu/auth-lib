@@ -19,6 +19,7 @@ import io.ktor.server.routing.route
  * ```
  *
  * Uc noktalar (basePath'e gore):
+ * - `POST {basePath}/device`             kullanici adi/sifre olmadan cihaz girisi
  * - `POST {basePath}/register`           email + sifre ile hesap ac
  * - `POST {basePath}/login`              giris
  * - `POST {basePath}/refresh`            token yenile (rotation)
@@ -31,6 +32,7 @@ fun Route.authRoutes(config: AuthConfig) {
     application.installAuthLib(config)
 
     val handlers = AuthHandlers(
+        config,
         AccountService(
             config = config,
             accounts = AccountRepository(config.database, config.accounts),
@@ -42,6 +44,7 @@ fun Route.authRoutes(config: AuthConfig) {
     )
 
     route(config.basePath) {
+        post("/device") { handlers.deviceLogin(call) }
         post("/register") { handlers.register(call) }
         post("/login") { handlers.login(call) }
         post("/refresh") { handlers.refresh(call) }
@@ -49,19 +52,43 @@ fun Route.authRoutes(config: AuthConfig) {
     }
 }
 
-internal class AuthHandlers(private val accounts: AccountService) {
+internal class AuthHandlers(
+    private val config: AuthConfig,
+    private val accounts: AccountService
+) {
+
+    suspend fun deviceLogin(call: ApplicationCall) {
+        val request = call.receiveOrNull<DeviceLoginRequest>() ?: return
+        val result = accounts.deviceLogin(request.deviceId, request.deviceSecret)
+        if (result is AuthResult.Ok) {
+            config.onLogin(
+                LoginEvent(
+                    account = result.value.account,
+                    method = LoginMethod.DEVICE,
+                    deviceId = request.deviceId?.trim(),
+                    profile = request.profile
+                )
+            )
+        }
+        call.respondResult(result, HttpStatusCode.OK)
+    }
 
     suspend fun register(call: ApplicationCall) {
         val request = call.receiveOrNull<RegisterRequest>() ?: return
-        call.respondResult(
-            accounts.register(request.email, request.password, request.displayName),
-            HttpStatusCode.Created
-        )
+        val result = accounts.register(request.email, request.password, request.displayName)
+        if (result is AuthResult.Ok) {
+            config.onLogin(LoginEvent(result.value.account, LoginMethod.REGISTER))
+        }
+        call.respondResult(result, HttpStatusCode.Created)
     }
 
     suspend fun login(call: ApplicationCall) {
         val request = call.receiveOrNull<LoginRequest>() ?: return
-        call.respondResult(accounts.login(request.email, request.password), HttpStatusCode.OK)
+        val result = accounts.login(request.email, request.password)
+        if (result is AuthResult.Ok) {
+            config.onLogin(LoginEvent(result.value.account, LoginMethod.PASSWORD))
+        }
+        call.respondResult(result, HttpStatusCode.OK)
     }
 
     suspend fun refresh(call: ApplicationCall) {
@@ -80,10 +107,11 @@ internal class AuthHandlers(private val accounts: AccountService) {
         }
 
         val request = call.receiveOrNull<SocialLoginRequest>() ?: return
-        call.respondResult(
-            accounts.socialLogin(provider, request.token, request.displayName),
-            HttpStatusCode.OK
-        )
+        val result = accounts.socialLogin(provider, request.token, request.displayName)
+        if (result is AuthResult.Ok) {
+            config.onLogin(LoginEvent(result.value.account, LoginMethod.SOCIAL))
+        }
+        call.respondResult(result, HttpStatusCode.OK)
     }
 
     private suspend inline fun <reified T : Any> ApplicationCall.receiveOrNull(): T? = try {

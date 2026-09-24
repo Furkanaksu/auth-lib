@@ -33,6 +33,11 @@ class AccountIdentityTable(tableName: String, accounts: AccountTable) : IntIdTab
     val providerUserId = varchar("provider_user_id", 255)
     /** Saglayicinin o anki email'i; bilgi amacli, eslesme icin kullanilmaz. */
     val email = varchar("email", 255).nullable()
+    /**
+     * Sadece cihaz girisinde kullanilir: istemcinin uretip sakladigi sirrin ozeti.
+     * Dolu ise sonraki girislerde ayni sir istenir; null ise deviceId tek basina yeter.
+     */
+    val secretHash = varchar("secret_hash", 255).nullable()
     val createdAt = datetime("created_at")
 
     init {

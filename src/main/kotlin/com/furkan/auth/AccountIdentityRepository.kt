@@ -9,6 +9,12 @@ import org.jetbrains.exposed.sql.transactions.transaction
 import org.jetbrains.exposed.sql.update
 import java.time.LocalDateTime
 
+/** Cihaz girisi de bir kimlik saglayicisidir; sosyal saglayicilarla ayni tabloda tutulur. */
+internal const val DEVICE_PROVIDER = "DEVICE"
+
+/** Cihaz kimligi: hangi hesaba ait ve (varsa) sirrin ozeti. */
+internal data class DeviceIdentity(val accountId: Int, val secretHash: String?)
+
 internal class AccountIdentityRepository(
     private val database: Database,
     private val table: AccountIdentityTable,
@@ -23,6 +29,25 @@ internal class AccountIdentityRepository(
             .firstOrNull()
             ?.get(table.accountId)
             ?.value
+    }
+
+    /** Cihaz kimligini deviceId ile bulur. */
+    fun findDevice(deviceId: String): DeviceIdentity? = transaction(database) {
+        table.selectAll()
+            .where { (table.provider eq DEVICE_PROVIDER) and (table.providerUserId eq deviceId) }
+            .limit(1)
+            .firstOrNull()
+            ?.let { DeviceIdentity(it[table.accountId].value, it[table.secretHash]) }
+    }
+
+    fun linkDevice(accountId: Int, deviceId: String, secretHash: String?): Unit = transaction(database) {
+        table.insert {
+            it[this.accountId] = EntityID(accountId, accounts)
+            it[this.provider] = DEVICE_PROVIDER
+            it[this.providerUserId] = deviceId
+            it[this.secretHash] = secretHash
+            it[this.createdAt] = LocalDateTime.now()
+        }
     }
 
     fun link(accountId: Int, identity: SocialIdentity): Unit = transaction(database) {
