@@ -7,13 +7,21 @@ import kotlinx.serialization.json.JsonObject
 data class RegisterRequest(
     val email: String? = null,
     val password: String? = null,
-    val displayName: String? = null
+    val displayName: String? = null,
+    /** Opsiyonel: cihaz kimligi. Verilirse [LoginEvent] ile projeye iletilir. */
+    val deviceId: String? = null,
+    /** Opsiyonel: uygulamaya ozel bilgiler; kutuphane icerigini bilmez. */
+    val profile: JsonObject? = null
 )
 
 @Serializable
 data class LoginRequest(
     val email: String? = null,
-    val password: String? = null
+    val password: String? = null,
+    /** Opsiyonel: cihaz kimligi. Verilirse [LoginEvent] ile projeye iletilir. */
+    val deviceId: String? = null,
+    /** Opsiyonel: uygulamaya ozel bilgiler; kutuphane icerigini bilmez. */
+    val profile: JsonObject? = null
 )
 
 @Serializable
@@ -38,14 +46,34 @@ data class DeviceLoginRequest(
     val profile: JsonObject? = null
 )
 
+/**
+ * Var olan hesaba email ve sifre ekler: cihaz hesabini kaliciya cevirir.
+ * Token ile cagrilir; yeni hesap acilmaz, mevcut hesabin id'si korunur.
+ */
+@Serializable
+data class AttachRequest(
+    val email: String? = null,
+    val password: String? = null,
+    val displayName: String? = null
+)
+
 /** Girisin nasil yapildigi. */
-enum class LoginMethod { DEVICE, PASSWORD, SOCIAL, REGISTER }
+enum class LoginMethod {
+    DEVICE,
+    PASSWORD,
+    SOCIAL,
+    REGISTER,
+
+    /** Var olan hesaba email/sifre eklendi; yeni hesap acilmadi. */
+    ATTACH
+}
 
 /**
  * Basarili giris olayi. [AuthConfig.onLogin] ile projeye iletilir; kutuphane profilin
  * icerigini bilmez, oldugu gibi aktarir.
  *
- * @param deviceId Cihaz girisinde cihazin kimligi; diger girislerde null.
+ * @param deviceId Istekte verilmisse cihazin kimligi. Cihaz girisinde hep dolu; kayit ve
+ *        parola girisinde istemci gonderdiyse dolu, yoksa null.
  * @param profile Istekteki ham `profile` nesnesi (platform, surum, dil...).
  */
 data class LoginEvent(

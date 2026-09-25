@@ -2,6 +2,7 @@ package com.furkan.auth
 
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.ApplicationCall
+import io.ktor.server.auth.authenticate
 import io.ktor.server.request.receive
 import io.ktor.server.response.respond
 import io.ktor.server.routing.Route
@@ -24,6 +25,7 @@ import io.ktor.server.routing.route
  * - `POST {basePath}/login`              giris
  * - `POST {basePath}/refresh`            token yenile (rotation)
  * - `POST {basePath}/social/{provider}`  Google / Apple / Facebook ile giris
+ * - `POST {basePath}/attach`            TOKEN ILE: cihaz hesabina email+sifre ekler
  *
  * Cikis istemcide yapilir: token'lar silinir.
  * Kullaniciya ait oturum/profil bilgisi bu kutuphanenin isi degildir (bkz. user-me-lib).
@@ -49,6 +51,11 @@ fun Route.authRoutes(config: AuthConfig) {
         post("/login") { handlers.login(call) }
         post("/refresh") { handlers.refresh(call) }
         post("/social/{provider}") { handlers.socialLogin(call) }
+
+        // Cihaz hesabini kaliciya cevirme: token zorunlu, hesap token'dan okunur.
+        authenticate(config.authName) {
+            post("/attach") { handlers.attach(call) }
+        }
     }
 }
 
@@ -77,7 +84,14 @@ internal class AuthHandlers(
         val request = call.receiveOrNull<RegisterRequest>() ?: return
         val result = accounts.register(request.email, request.password, request.displayName)
         if (result is AuthResult.Ok) {
-            config.onLogin(LoginEvent(result.value.account, LoginMethod.REGISTER))
+            config.onLogin(
+                LoginEvent(
+                    account = result.value.account,
+                    method = LoginMethod.REGISTER,
+                    deviceId = request.deviceId?.trim()?.ifBlank { null },
+                    profile = request.profile
+                )
+            )
         }
         call.respondResult(result, HttpStatusCode.Created)
     }
@@ -86,7 +100,29 @@ internal class AuthHandlers(
         val request = call.receiveOrNull<LoginRequest>() ?: return
         val result = accounts.login(request.email, request.password)
         if (result is AuthResult.Ok) {
-            config.onLogin(LoginEvent(result.value.account, LoginMethod.PASSWORD))
+            config.onLogin(
+                LoginEvent(
+                    account = result.value.account,
+                    method = LoginMethod.PASSWORD,
+                    deviceId = request.deviceId?.trim()?.ifBlank { null },
+                    profile = request.profile
+                )
+            )
+        }
+        call.respondResult(result, HttpStatusCode.OK)
+    }
+
+    /** Token'la gelen hesaba email+sifre ekler; yeni hesap acilmaz. */
+    suspend fun attach(call: ApplicationCall) {
+        val hesap = call.currentAccount() ?: return call.respond(
+            HttpStatusCode.Unauthorized,
+            AuthErrorResponse(error = "Gecersiz ya da suresi dolmus token")
+        )
+        val request = call.receiveOrNull<AttachRequest>() ?: return
+
+        val result = accounts.attach(hesap.accountId, request.email, request.password, request.displayName)
+        if (result is AuthResult.Ok) {
+            config.onLogin(LoginEvent(result.value.account, LoginMethod.ATTACH))
         }
         call.respondResult(result, HttpStatusCode.OK)
     }

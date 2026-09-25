@@ -27,7 +27,7 @@ dependencyResolutionManagement {
 `build.gradle.kts`:
 
 ```kotlin
-implementation("com.github.Furkanaksu:auth-lib:3.1.0")
+implementation("com.github.Furkanaksu:auth-lib:3.2.0")
 ```
 
 ## Kullanım
@@ -69,6 +69,7 @@ Kendi korumalı route'larını `authRoutes`'tan **önce** tanımlıyorsan en ba�
 | POST | `/auth/refresh` | Refresh token'la yeni çift (eskisi iptal) |
 | POST | `/auth/social/{provider}` | `google` / `apple` / `facebook` ile giriş |
 | POST | `/auth/device` | Kullanıcı adı/şifre olmadan, cihaz kimliğiyle giriş |
+| POST | `/auth/attach` | **Token ile:** cihaz hesabına e-posta + şifre ekler |
 
 ```json
 POST /auth/register   { "email": "a@b.com", "password": "en-az-8-karakter", "displayName": "Ali" }
@@ -103,8 +104,35 @@ AuthConfig(
 )
 ```
 
-`LoginEvent` her giriş yolunda tetiklenir: `method` alanı `DEVICE`, `PASSWORD`, `SOCIAL`
-ya da `REGISTER` olur.
+`LoginEvent` her giriş yolunda tetiklenir: `method` alanı `DEVICE`, `PASSWORD`, `SOCIAL`,
+`REGISTER` ya da `ATTACH` olur.
+
+### Cihaz hesabını kalıcıya çevirmek
+
+Kullanıcı önce cihaz girişiyle bir hesap edinir; oturumu, geçmişi ve satın alımları o hesaba
+bağlanır. Sonra e-posta ile kaydolmak isterse `POST /auth/register` **yanlış** olur: yeni bir
+hesap açar ve kullanıcının o ana kadar biriktirdiği her şey eski hesapta öksüz kalır.
+
+Doğrusu, var olan hesaba kimlik bilgisi eklemektir:
+
+```json
+POST /auth/attach          Authorization: Bearer <cihaz token'ı>
+{ "email": "ali@ornek.com", "password": "en-az-8-karakter", "displayName": "Ali" }
+```
+
+Yeni hesap **açılmaz**; hesabın id'si korunur, dolayısıyla ona bağlı her şey yerinde kalır.
+Dönen yeni token çifti artık e-postayı da taşır ve kullanıcı bundan sonra `/auth/login` ile
+de aynı hesaba girer.
+
+Hesapta zaten bir e-posta varsa 409 döner — e-posta değiştirmek ayrı bir iştir. E-posta
+başkasına aitse de 409.
+
+### Oturumu girişe bağlamak
+
+`/auth/register` ve `/auth/login` gövdesine isteğe bağlı `deviceId` (ve `profile`)
+eklenebilir; kütüphane bunları `LoginEvent` ile olduğu gibi projeye iletir. Böylece proje
+kullanıcının hangi cihazdan giriş yaptığını bilir ve oturumu o hesaba bağlayabilir.
+Göndermezsen alan `null` gelir — eski istemciler bozulmaz.
 
 Cevap:
 
@@ -228,6 +256,11 @@ ALTER TABLE <prefix>accounts ALTER COLUMN password_hash DROP NOT NULL;
 
 ## Sürüm notu
 
+`3.2.0` `POST /auth/attach` ucunu ekledi: cihaz hesabına e-posta + şifre ekleyerek onu kalıcı
+hesaba çevirir, yeni hesap açmaz. `RegisterRequest` ve `LoginRequest` artık isteğe bağlı
+`deviceId` ve `profile` alanlarını kabul ediyor, `LoginMethod`'a `ATTACH` eklendi. Kırıcı
+değişiklik yok, şema değişmedi.
+
 `3.1.0` cihaz girişini (`POST /auth/device`) ve `onLogin` geri çağrısını ekledi. Kırıcı
 değişiklik yok; `account_identities` tablosuna nullable bir `secret_hash` kolonu eklenir,
 şema kendiliğinden güncellenir.
@@ -243,8 +276,8 @@ veri taşımaya gerek yoktur.
 ## Yayınlama (JitPack)
 
 ```bash
-git tag 3.1.0
-git push origin 3.1.0
+git tag 3.2.0
+git push origin 3.2.0
 ```
 
 ## Geliştirme

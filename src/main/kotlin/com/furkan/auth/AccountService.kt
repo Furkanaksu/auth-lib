@@ -45,6 +45,61 @@ internal class AccountService(
         return AuthResult.Ok(issueTokens(account))
     }
 
+    /**
+     * Var olan bir hesaba email ve sifre ekler: cihaz hesabini kaliciya cevirir.
+     *
+     * Yeni hesap ACILMAZ. Hesabin id'si korundugu icin oturum, gecmis, premium ve hesaba
+     * bagli her sey yerinde kalir — kullanicinin kayit olmadan once biriktirdigi hicbir sey
+     * kaybolmaz.
+     *
+     * Hesabin zaten bir email'i varsa reddedilir; email degistirmek ayri bir istir.
+     */
+    fun attach(
+        accountId: Int,
+        email: String?,
+        password: String?,
+        displayName: String?
+    ): AuthResult<TokenResponse> {
+        val normalized = email?.trim()?.lowercase()
+        if (normalized.isNullOrBlank() || normalized.length > 255 || !EMAIL.matches(normalized)) {
+            return AuthResult.Fail(HttpStatusCode.BadRequest, "Gecerli bir email girin")
+        }
+        if (password.isNullOrEmpty() || password.length < config.minPasswordLength) {
+            return AuthResult.Fail(
+                HttpStatusCode.BadRequest,
+                "Sifre en az ${config.minPasswordLength} karakter olmali"
+            )
+        }
+        if (password.length > MAX_PASSWORD) {
+            return AuthResult.Fail(HttpStatusCode.BadRequest, "Sifre en fazla $MAX_PASSWORD karakter olabilir")
+        }
+
+        val record = accounts.findRecordById(accountId)
+            ?: return AuthResult.Fail(HttpStatusCode.Unauthorized, INVALID_CREDENTIALS)
+        if (record.email != null) {
+            return AuthResult.Fail(HttpStatusCode.Conflict, "Bu hesapta zaten bir email kayitli")
+        }
+        if (accounts.existsByEmail(normalized)) {
+            return AuthResult.Fail(HttpStatusCode.Conflict, "Bu email ile kayitli bir hesap var")
+        }
+
+        try {
+            accounts.attachCredentials(
+                id = accountId,
+                email = normalized,
+                passwordHash = PasswordHasher.hash(password),
+                displayName = displayName?.trim()?.take(100)?.ifBlank { null }
+            )
+        } catch (e: Exception) {
+            // Ayni anda iki istek: unique index ikincisini reddeder.
+            return AuthResult.Fail(HttpStatusCode.Conflict, "Bu email ile kayitli bir hesap var")
+        }
+
+        val account = accounts.findById(accountId)
+            ?: return AuthResult.Fail(HttpStatusCode.Unauthorized, INVALID_CREDENTIALS)
+        return AuthResult.Ok(issueTokens(account))
+    }
+
     fun login(email: String?, password: String?): AuthResult<TokenResponse> {
         val normalized = email?.trim()?.lowercase()
         if (normalized.isNullOrBlank() || password.isNullOrEmpty()) {

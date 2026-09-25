@@ -58,6 +58,25 @@ internal class AccountRepository(
             )
         }
 
+    fun findRecordById(id: Int): AccountRecord? = transaction(database) {
+        table.selectAll().where { table.id eq id }.limit(1).firstOrNull()?.toRecord()
+    }
+
+    /**
+     * Var olan bir hesaba email ve sifre ekler: cihaz hesabini kaliciya cevirir.
+     * Yeni hesap ACMAZ; hesabin id'si korunur, dolayisiyla oturum, gecmis, premium ve
+     * ona bagli her sey yerinde kalir.
+     */
+    fun attachCredentials(id: Int, email: String, passwordHash: String, displayName: String?): Unit =
+        transaction(database) {
+            table.update({ table.id eq id }) {
+                it[this.email] = email
+                it[this.passwordHash] = passwordHash
+                if (displayName != null) it[this.displayName] = displayName
+                it[this.lastLoginAt] = LocalDateTime.now()
+            }
+        }
+
     fun touchLogin(id: Int): Unit = transaction(database) {
         table.update({ table.id eq id }) { it[this.lastLoginAt] = LocalDateTime.now() }
     }
